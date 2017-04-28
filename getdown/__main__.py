@@ -36,7 +36,7 @@ def _create_protocol(fileobj):
     protocol = TCompactProtocol.TCompactProtocol(transport)
     return protocol
 
-def _transform(fileobj, transform):
+def _transform(fileobj, transform, append=False):
     file_size = os.fstat(fileobj.fileno()).st_size
 
     if file_size < 12:
@@ -66,6 +66,9 @@ def _transform(fileobj, transform):
             new_path = [transform(p) for p in old_path]
             column.meta_data.path_in_schema = new_path
 
+    if append:
+        footer_offset = file_size
+
     new_footer_size = _write_footer(fileobj, footer_offset, metadata)
     fileobj.write(struct.pack('<i', new_footer_size))
     fileobj.write('PAR1')
@@ -75,15 +78,24 @@ TRANSFORMS = {
     'underscore': underscore,
 }
 
-def usage():
-    print("usage: python -m getdown <lowercase|underscore> <myfile.parquet>")
+def _usage():
+    print("usage: python -m getdown [-a] <lowercase|underscore> <myfile.parquet>")
     sys.exit(1)
 
-if len(sys.argv) < 3:
-    usage()
+def _parse_args(args):
+    if len(args) == 3 and args[0] == '-a':
+        return (args[1], args[2], True)
+    if len(args) == 2:
+        return (args[0], args[1], False)
+    _usage()
 
-if sys.argv[1] not in TRANSFORMS:
-    usage()
+def _run():
+    transform_name, file_name, append = _parse_args(sys.argv[1:])
 
-with open(sys.argv[2], 'r+b') as fileobj:
-    _transform(fileobj, TRANSFORMS[sys.argv[1]])
+    if transform_name not in TRANSFORMS:
+        _usage()
+
+    with open(file_name, 'r+b') as fileobj:
+        _transform(fileobj, TRANSFORMS[transform_name], append=append)
+
+_run()

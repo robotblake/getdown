@@ -18,7 +18,25 @@ def underscore(word):
 def lower(word):
     return word.lower()
 
-def transform(fileobj, transform):
+def _read_footer(fileobj, offset):
+    fileobj.seek(offset)
+    protocol = _create_protocol(fileobj)
+    metadata = FileMetaData()
+    metadata.read(protocol)
+    return metadata
+
+def _write_footer(fileobj, offset, metadata):
+    fileobj.seek(offset)
+    protocol = _create_protocol(fileobj)
+    metadata.write(protocol)
+    return fileobj.tell() - offset
+
+def _create_protocol(fileobj):
+    transport = TTransport.TFileObjectTransport(fileobj)
+    protocol = TCompactProtocol.TCompactProtocol(transport)
+    return protocol
+
+def _transform(fileobj, transform):
     file_size = os.fstat(fileobj.fileno()).st_size
 
     if file_size < 12:
@@ -34,13 +52,8 @@ def transform(fileobj, transform):
     if file_size < (12 + footer_size):
         raise RuntimeError("file is too small")
 
-    footer_pos = file_size - 8 - footer_size
-
-    fileobj.seek(footer_pos)
-    transport = TTransport.TFileObjectTransport(fileobj)
-    protocol = TCompactProtocol.TCompactProtocol(transport)
-    metadata = FileMetaData()
-    metadata.read(protocol)
+    footer_offset = file_size - 8 - footer_size
+    metadata = _read_footer(fileobj, footer_offset)
 
     for schema_element in metadata.schema:
         old_name = schema_element.name
@@ -53,10 +66,7 @@ def transform(fileobj, transform):
             new_path = [transform(p) for p in old_path]
             column.meta_data.path_in_schema = new_path
 
-    fileobj.seek(footer_pos)
-    metadata.write(protocol)
-
-    new_footer_size = fileobj.tell() - footer_pos
+    new_footer_size = _write_footer(fileobj, footer_offset, metadata)
     fileobj.write(struct.pack('<i', new_footer_size))
     fileobj.write('PAR1')
 
@@ -76,4 +86,4 @@ if sys.argv[1] not in TRANSFORMS:
     usage()
 
 with open(sys.argv[2], 'r+b') as fileobj:
-    transform(fileobj, TRANSFORMS[sys.argv[1]])
+    _transform(fileobj, TRANSFORMS[sys.argv[1]])

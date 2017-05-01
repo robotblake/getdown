@@ -95,7 +95,9 @@ def _run():
     if transform_name not in TRANSFORMS:
         _usage()
 
+    stat = os.stat(file_name)
     with open(file_name, 'r+b') as fileobj:
         _transform(fileobj, TRANSFORMS[transform_name], append=append)
+    os.utime(file_name, (stat.st_atime, stat.st_mtime))
 
 _run()
